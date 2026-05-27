@@ -1,6 +1,6 @@
 -- Lost Cities — Supabase schema (3-round match + restart + 5/6 rule)
 -- Re-run this whole file in Supabase SQL Editor; it drops and recreates everything.
--- After running, enable Realtime on the public.game_events table.
+-- Realtime publication for game_events is set up inline below — no manual step needed.
 
 drop function if exists apply_action(text, text, jsonb) cascade;
 drop function if exists get_state(text, text) cascade;
@@ -145,6 +145,28 @@ create policy events_read_all on game_events for select using (true);
 create policy events_no_write on game_events for all using (false) with check (false);
 
 -- ============================================================
+-- Realtime — publish INSERTs on game_events so clients can subscribe.
+-- Replaces the old manual "enable Realtime" dashboard step. Idempotent.
+-- ============================================================
+
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'game_events'
+  ) then
+    alter publication supabase_realtime add table public.game_events;
+  end if;
+end
+$$;
+
+-- ============================================================
 -- Room code
 -- ============================================================
 
@@ -199,7 +221,7 @@ create or replace function _goal_pool() returns jsonb language sql immutable as 
     {"id":"first_total_5",                "description":"카드 5장 먼저 놓기",                          "points":10, "category":"first"},
     {"id":"first_3_colors",               "description":"3가지 색 탐험 먼저 시작",                      "points":10, "category":"first"},
     {"id":"first_color_5",                "description":"한 색에 5장 먼저 놓기",                       "points":10, "category":"first"},
-    {"id":"first_color_score_20",         "description":"한 색에 +20점 먼저",                          "points":10, "category":"first"},
+    {"id":"first_color_score_20",         "description":"한 색 숫자합 20 먼저",                        "points":10, "category":"first"},
     {"id":"first_consecutive_3",          "description":"한 탐험에 연속 숫자 3장 먼저",                 "points":10, "category":"first"},
     {"id":"first_blue_plus_other_sum_10", "description":"파랑+다른 색 숫자 합 10 먼저",                "points":10, "category":"first"},
     {"id":"first_color_3_wagers",         "description":"한 색에 협상카드 3장 먼저",                    "points":12, "category":"first"},
@@ -284,8 +306,7 @@ begin
       when 'first_color_5'        then if _len >= 5 then return true; end if;
       when 'first_color_3_wagers' then if _wagers_color >= 3 then return true; end if;
       when 'first_color_score_20' then
-        _score := score_expedition(_exp);
-        if _score >= 20 then return true; end if;
+        if _color_num_sum >= 20 then return true; end if;
       when 'first_color_score_50' then
         _score := score_expedition(_exp);
         if _score >= 50 then return true; end if;

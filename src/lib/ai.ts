@@ -263,7 +263,7 @@ function isGoalNear(goalId: string, exp: Record<Color, number[]>): boolean {
     case 'first_color_5':
       return colors.some((c) => exp[c].length === 4);
     case 'first_color_score_20':
-      return colors.some((c) => scoreExpedition(exp[c]) >= 10);
+      return colors.some((c) => numberSum(c) >= 15 && numberSum(c) < 20);
     case 'first_color_score_50':
       return colors.some((c) => scoreExpedition(exp[c]) >= 30);
     case 'first_2_wagers':

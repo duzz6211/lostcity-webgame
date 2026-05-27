@@ -132,7 +132,7 @@ export const GOAL_POOL: GoalDef[] = [
   { id: 'first_total_5',                 description: '카드 5장 먼저 놓기',                    points: 10, category: 'first' },
   { id: 'first_3_colors',                description: '3가지 색 탐험 먼저 시작',                points: 10, category: 'first' },
   { id: 'first_color_5',                 description: '한 색에 5장 먼저 놓기',                 points: 10, category: 'first' },
-  { id: 'first_color_score_20',          description: '한 색에 +20점 먼저',                    points: 10, category: 'first' },
+  { id: 'first_color_score_20',          description: '한 색 숫자합 20 먼저',                  points: 10, category: 'first' },
   { id: 'first_consecutive_3',           description: '한 탐험에 연속 숫자 3장 먼저',          points: 10, category: 'first' },
   { id: 'first_blue_plus_other_sum_10',  description: '파랑+다른 색 숫자 합 10 먼저',          points: 10, category: 'first' },
   { id: 'first_color_3_wagers',          description: '한 색에 협상카드 3장 먼저',              points: 12, category: 'first' },
@@ -205,7 +205,7 @@ export function checkGoalAchieved(
     case 'first_color_5':
       return colors.some((c) => expeditions[c].length >= 5);
     case 'first_color_score_20':
-      return colors.some((c) => scoreExpedition(expeditions[c]) >= 20);
+      return colors.some((c) => expNumberSum(expeditions[c]) >= 20);
     case 'first_color_score_50':
       return colors.some((c) => scoreExpedition(expeditions[c]) >= 50);
     case 'first_2_wagers':
