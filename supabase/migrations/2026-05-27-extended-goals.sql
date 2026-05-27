@@ -1,193 +1,10 @@
--- Lost Cities — Supabase schema (3-round match + restart + 5/6 rule)
--- Re-run this whole file in Supabase SQL Editor; it drops and recreates everything.
--- After running, enable Realtime on the public.game_events table.
-
-drop function if exists apply_action(text, text, jsonb) cascade;
-drop function if exists get_state(text, text) cascade;
-drop function if exists create_game(text) cascade;
-drop function if exists create_game(text, text) cascade;
-drop function if exists create_game(text, text, text) cascade;
-drop function if exists create_ai_game(text, text, text) cascade;
-drop function if exists join_game(text, text) cascade;
-drop function if exists next_round(text, text) cascade;
-drop function if exists restart_match(text, text) cascade;
-drop function if exists timeout_action(text, text) cascade;
-drop function if exists score_expedition(int[]) cascade;
-drop function if exists gen_room_code() cascade;
-drop function if exists card_color(int) cascade;
-drop function if exists card_is_wager(int) cascade;
-drop function if exists card_value(int) cascade;
-drop function if exists _goal_achieved(text, jsonb) cascade;
-drop function if exists _eval_goals(jsonb, jsonb, text) cascade;
-drop function if exists _eval_end_goals(jsonb, jsonb, int[], int[]) cascade;
-drop function if exists _gen_goals() cascade;
-drop function if exists _fresh_deck(text) cascade;
-drop function if exists _fresh_deck() cascade;
-drop function if exists _empty_expeditions(text) cascade;
-drop function if exists _empty_expeditions() cascade;
-drop function if exists _empty_discards(text) cascade;
-drop function if exists _empty_discards() cascade;
-drop function if exists _score_breakdown(jsonb, text, text, jsonb) cascade;
-drop function if exists _score_breakdown(jsonb, text) cascade;
-drop table if exists game_events cascade;
-drop table if exists games cascade;
-
-create extension if not exists "pgcrypto";
+-- Migration: Extended goal system (20-entry pool, pick 5, first-come + game-end categories).
+-- Replaces _goal_pool, _gen_goals, _goal_achieved, _eval_goals; adds _eval_end_goals;
+-- updates apply_action so end-game goals are settled when a round ends.
+-- Safe on existing games (old 3-goal rooms keep working; their goals default to 'first' category).
 
 -- ============================================================
--- Card helpers (id 0..71; color = id/12, slot = id%12, slot<3 = wager)
--- 5-rule deck uses id 0..59 (colors r/g/b/y/w)
--- 6-rule deck uses id 0..71 (adds purple p, ids 60..71)
--- ============================================================
-
-create or replace function card_color(_id int) returns text language sql immutable as $$
-  select case _id / 12
-    when 0 then 'r' when 1 then 'g' when 2 then 'b' when 3 then 'y' when 4 then 'w' when 5 then 'p'
-  end
-$$;
-
-create or replace function card_is_wager(_id int) returns boolean language sql immutable as $$
-  select (_id % 12) < 3
-$$;
-
-create or replace function card_value(_id int) returns int language sql immutable as $$
-  select case when (_id % 12) < 3 then null else (_id % 12) - 1 end
-$$;
-
-create or replace function score_expedition(_cards int[]) returns int language plpgsql immutable as $$
-declare
-  _numbers_sum int := 0;
-  _wager_count int := 0;
-  _card_id int;
-  _score int;
-  _len int;
-begin
-  _len := coalesce(array_length(_cards, 1), 0);
-  if _len = 0 then return 0; end if;
-  foreach _card_id in array _cards loop
-    if card_is_wager(_card_id) then
-      _wager_count := _wager_count + 1;
-    else
-      _numbers_sum := _numbers_sum + card_value(_card_id);
-    end if;
-  end loop;
-  _score := (_numbers_sum - 20) * (1 + _wager_count);
-  if _len >= 8 then _score := _score + 20; end if;
-  return _score;
-end
-$$;
-
--- ============================================================
--- Tables
--- ============================================================
-
-create table games (
-  id uuid primary key default gen_random_uuid(),
-  room_code text unique not null,
-
-  -- Match config
-  mode text not null default 'single',           -- 'single' | 'match3'
-  ruleset text not null default '5rule',          -- '5rule' | '6rule'
-  max_rounds int not null default 1,
-  current_round int not null default 1,
-
-  -- Round state
-  deck int[] not null,
-  p1_hand int[] not null default '{}',
-  p2_hand int[] not null default '{}',
-  discards jsonb not null default '{"r":[],"g":[],"b":[],"y":[],"w":[]}'::jsonb,
-  expeditions jsonb not null default '{"p1":{"r":[],"g":[],"b":[],"y":[],"w":[]},"p2":{"r":[],"g":[],"b":[],"y":[],"w":[]}}'::jsonb,
-  turn text not null default 'p1',
-  phase text not null default 'play_or_discard',
-  last_discard_color text,
-  first_player text not null default 'p1',       -- who started this round
-  ended boolean not null default false,           -- current round done?
-  turn_started_at timestamptz not null default now(),
-
-  -- 6-rule goals: jsonb array of {id, description, points, claimed_by}
-  goals jsonb not null default '[]'::jsonb,
-
-  -- Match cumulative
-  cumulative_p1 int not null default 0,
-  cumulative_p2 int not null default 0,
-  round_history jsonb not null default '[]'::jsonb,
-  match_ended boolean not null default false,
-
-  -- Identity / sync
-  p1_token text not null,
-  p2_token text,
-  is_ai_p2 boolean not null default false,
-  version int not null default 0,
-  created_at timestamptz not null default now()
-);
-
-create table game_events (
-  id bigserial primary key,
-  game_id uuid not null references games(id) on delete cascade,
-  version int not null,
-  room_code text not null,
-  created_at timestamptz not null default now()
-);
-
-create index idx_game_events_room on game_events(room_code, id desc);
-
--- ============================================================
--- RLS — block direct game reads (RPC-only); allow event reads for Realtime
--- ============================================================
-
-alter table games enable row level security;
-alter table game_events enable row level security;
-
-create policy games_no_select on games for select using (false);
-create policy games_no_modify on games for all using (false) with check (false);
-
-create policy events_read_all on game_events for select using (true);
-create policy events_no_write on game_events for all using (false) with check (false);
-
--- ============================================================
--- Room code
--- ============================================================
-
-create or replace function gen_room_code() returns text language plpgsql as $$
-declare
-  alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  code text := '';
-  i int;
-begin
-  for i in 1..6 loop
-    code := code || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1);
-  end loop;
-  return code;
-end
-$$;
-
--- ============================================================
--- Internal helpers (ruleset-aware)
--- ============================================================
-
-create or replace function _fresh_deck(_ruleset text) returns int[] language sql as $$
-  select array_agg(i order by random())
-  from generate_series(0, case when _ruleset = '6rule' then 71 else 59 end) i
-$$;
-
-create or replace function _empty_expeditions(_ruleset text) returns jsonb language sql immutable as $$
-  select case when _ruleset = '6rule' then
-    '{"p1":{"r":[],"g":[],"b":[],"y":[],"w":[],"p":[]},"p2":{"r":[],"g":[],"b":[],"y":[],"w":[],"p":[]}}'::jsonb
-  else
-    '{"p1":{"r":[],"g":[],"b":[],"y":[],"w":[]},"p2":{"r":[],"g":[],"b":[],"y":[],"w":[]}}'::jsonb
-  end
-$$;
-
-create or replace function _empty_discards(_ruleset text) returns jsonb language sql immutable as $$
-  select case when _ruleset = '6rule' then
-    '{"r":[],"g":[],"b":[],"y":[],"w":[],"p":[]}'::jsonb
-  else
-    '{"r":[],"g":[],"b":[],"y":[],"w":[]}'::jsonb
-  end
-$$;
-
--- ============================================================
--- Goal pool & evaluation
+-- 1. Goal pool (20 entries, with category)
 -- ============================================================
 
 create or replace function _goal_pool() returns jsonb language sql immutable as $$
@@ -215,7 +32,10 @@ create or replace function _goal_pool() returns jsonb language sql immutable as 
   ]'::jsonb
 $$;
 
--- Pick 5 random goals from the pool, mark all unclaimed.
+-- ============================================================
+-- 2. Pick 5 random goals
+-- ============================================================
+
 create or replace function _gen_goals() returns jsonb language plpgsql as $$
 declare
   _pool jsonb := _goal_pool();
@@ -237,7 +57,12 @@ begin
 end
 $$;
 
--- Check whether a player's expeditions satisfy a single first-come goal id.
+-- ============================================================
+-- 3. First-come goal evaluator (with new goal IDs)
+-- ============================================================
+
+drop function if exists _goal_achieved(text, jsonb) cascade;
+
 create or replace function _goal_achieved(_goal_id text, _player_exp jsonb)
 returns boolean language plpgsql immutable as $$
 declare
@@ -318,7 +143,12 @@ begin
 end
 $$;
 
--- Evaluate first-come goals against a player; return updated goals jsonb. End-category goals are skipped.
+-- ============================================================
+-- 4. Re-evaluate first-come goals only (skip 'end' category)
+-- ============================================================
+
+drop function if exists _eval_goals(jsonb, jsonb, text) cascade;
+
 create or replace function _eval_goals(_goals jsonb, _player_exp jsonb, _player text)
 returns jsonb language plpgsql immutable as $$
 declare
@@ -327,6 +157,7 @@ declare
   _id text;
 begin
   for _g in select * from jsonb_array_elements(_goals) loop
+    -- 'end'-category goals are settled at round end, not during play. Old goals (no category) default to first.
     if coalesce(_g->>'category', 'first') = 'first' and _g->>'claimed_by' is null then
       _id := _g->>'id';
       if _goal_achieved(_id, _player_exp) then
@@ -339,7 +170,12 @@ begin
 end
 $$;
 
--- Settle end-category goals using both players' final hands + expeditions.
+-- ============================================================
+-- 5. Game-end goal evaluator: takes both players' expeditions + hands
+-- ============================================================
+
+drop function if exists _eval_end_goals(jsonb, jsonb, int[], int[]) cascade;
+
 create or replace function _eval_end_goals(
   _goals jsonb, _expeditions jsonb, _p1_hand int[], _p2_hand int[]
 ) returns jsonb language plpgsql immutable as $$
@@ -367,6 +203,7 @@ declare
   _s int;
   _card int;
 begin
+  -- Aggregates per player
   for _color in select * from jsonb_object_keys(_p1_exp) loop
     _exp := array(select jsonb_array_elements_text(_p1_exp->_color)::int);
     _len := coalesce(array_length(_exp, 1), 0);
@@ -453,245 +290,11 @@ begin
 end
 $$;
 
--- Compute one player's round breakdown as jsonb {r,g,b,y,w,(p),goals,total}
-create or replace function _score_breakdown(_expeditions jsonb, _player text, _ruleset text, _goals jsonb)
-returns jsonb language plpgsql immutable as $$
-declare
-  _out jsonb := '{}'::jsonb;
-  _color text;
-  _exp int[];
-  _s int;
-  _total int := 0;
-  _goal_points int := 0;
-  _g jsonb;
-  _colors text[];
-begin
-  if _ruleset = '6rule' then
-    _colors := array['r','g','b','y','w','p'];
-  else
-    _colors := array['r','g','b','y','w'];
-  end if;
-
-  foreach _color in array _colors loop
-    _exp := array(select jsonb_array_elements_text(_expeditions->_player->_color)::int);
-    _s := score_expedition(_exp);
-    _out := jsonb_set(_out, array[_color], to_jsonb(_s));
-    _total := _total + _s;
-  end loop;
-
-  -- Sum goal points claimed by this player
-  if _goals is not null then
-    for _g in select * from jsonb_array_elements(_goals) loop
-      if (_g->>'claimed_by') = _player then
-        _goal_points := _goal_points + ((_g->>'points')::int);
-      end if;
-    end loop;
-  end if;
-
-  _out := jsonb_set(_out, array['goals'], to_jsonb(_goal_points));
-  _total := _total + _goal_points;
-  _out := jsonb_set(_out, array['total'], to_jsonb(_total));
-  return _out;
-end
-$$;
-
 -- ============================================================
--- create_game(token, mode, ruleset)
+-- 6. Replace apply_action so it settles end-game goals on round end.
 -- ============================================================
 
-create or replace function create_game(_p1_token text, _mode text default 'single', _ruleset text default '5rule')
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  _deck int[]; _hand int[]; _n int;
-  _room_code text; _attempts int := 0; _game_id uuid;
-  _max_rounds int;
-  _goals jsonb;
-begin
-  if _mode not in ('single', 'match3') then raise exception 'Invalid mode' using errcode = 'P0001'; end if;
-  if _ruleset not in ('5rule', '6rule') then raise exception 'Invalid ruleset' using errcode = 'P0001'; end if;
-  _max_rounds := case when _mode = 'match3' then 3 else 1 end;
-
-  _deck := _fresh_deck(_ruleset);
-  _n := array_length(_deck, 1);
-  _hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-
-  _goals := case when _ruleset = '6rule' then _gen_goals() else '[]'::jsonb end;
-
-  loop
-    _attempts := _attempts + 1;
-    _room_code := gen_room_code();
-    exit when not exists(select 1 from games where room_code = _room_code);
-    if _attempts > 25 then raise exception 'Failed to generate room code'; end if;
-  end loop;
-
-  insert into games(room_code, mode, ruleset, max_rounds, deck, p1_hand, p1_token,
-                    discards, expeditions, goals)
-    values (_room_code, _mode, _ruleset, _max_rounds, _deck, _hand, _p1_token,
-            _empty_discards(_ruleset), _empty_expeditions(_ruleset), _goals)
-    returning id into _game_id;
-
-  insert into game_events(game_id, version, room_code) values (_game_id, 0, _room_code);
-
-  return jsonb_build_object('room_code', _room_code, 'role', 'p1');
-end
-$$;
-
-grant execute on function create_game(text, text, text) to anon, authenticated;
-
--- ============================================================
--- join_game
--- ============================================================
-
-create or replace function join_game(_room_code text, _p2_token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  _g games%rowtype; _hand int[]; _deck int[]; _n int; _new_version int;
-begin
-  _room_code := upper(_room_code);
-  select * into _g from games where room_code = _room_code for update;
-  if not found then raise exception 'Room not found' using errcode = 'P0001'; end if;
-
-  if _g.p1_token = _p2_token then
-    return jsonb_build_object('room_code', _room_code, 'role', 'p1');
-  end if;
-  if _g.p2_token is not null then
-    if _g.p2_token = _p2_token then
-      return jsonb_build_object('room_code', _room_code, 'role', 'p2');
-    end if;
-    raise exception 'Room is full' using errcode = 'P0001';
-  end if;
-
-  _deck := _g.deck;
-  _n := array_length(_deck, 1);
-  _hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-
-  _new_version := _g.version + 1;
-
-  update games set
-    deck = _deck,
-    p2_hand = _hand,
-    p2_token = _p2_token,
-    turn_started_at = now(),
-    version = _new_version
-  where id = _g.id;
-
-  insert into game_events(game_id, version, room_code) values (_g.id, _new_version, _room_code);
-
-  return jsonb_build_object('room_code', _room_code, 'role', 'p2');
-end
-$$;
-
-grant execute on function join_game(text, text) to anon, authenticated;
-
--- ============================================================
--- get_state
--- ============================================================
-
-create or replace function get_state(_room_code text, _token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  _g games%rowtype; _role text; _my_hand int[]; _opp_count int;
-begin
-  _room_code := upper(_room_code);
-  select * into _g from games where room_code = _room_code;
-  if not found then raise exception 'Room not found' using errcode = 'P0001'; end if;
-
-  if _g.p1_token = _token then
-    _role := 'p1'; _my_hand := _g.p1_hand; _opp_count := coalesce(array_length(_g.p2_hand, 1), 0);
-  elsif _g.p2_token = _token then
-    _role := 'p2'; _my_hand := _g.p2_hand; _opp_count := coalesce(array_length(_g.p1_hand, 1), 0);
-  else
-    raise exception 'Invalid token' using errcode = 'P0001';
-  end if;
-
-  return jsonb_build_object(
-    'room_code', _g.room_code,
-    'mode', _g.mode,
-    'ruleset', _g.ruleset,
-    'max_rounds', _g.max_rounds,
-    'current_round', _g.current_round,
-    'role', _role,
-    'my_hand', to_jsonb(_my_hand),
-    'opponent_hand_count', _opp_count,
-    'deck_count', coalesce(array_length(_g.deck, 1), 0),
-    'discards', _g.discards,
-    'expeditions', _g.expeditions,
-    'turn', _g.turn,
-    'phase', _g.phase,
-    'last_discard_color', _g.last_discard_color,
-    'first_player', _g.first_player,
-    'ended', _g.ended,
-    'match_ended', _g.match_ended,
-    'cumulative', jsonb_build_object('p1', _g.cumulative_p1, 'p2', _g.cumulative_p2),
-    'round_history', _g.round_history,
-    'goals', _g.goals,
-    'turn_started_at', _g.turn_started_at,
-    'version', _g.version,
-    'p2_joined', _g.p2_token is not null,
-    'is_ai_p2', _g.is_ai_p2,
-    'ai_token', case when _g.is_ai_p2 and _role = 'p1' then _g.p2_token else null end
-  );
-end
-$$;
-
-grant execute on function get_state(text, text) to anon, authenticated;
-
--- ============================================================
--- create_ai_game — create a room and seat the AI as p2 in one transaction
--- ============================================================
-
-create or replace function create_ai_game(_p1_token text, _mode text default 'single', _ruleset text default '5rule')
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  _deck int[]; _p1_hand int[]; _p2_hand int[]; _n int;
-  _room_code text; _attempts int := 0; _game_id uuid;
-  _max_rounds int;
-  _goals jsonb;
-  _ai_token text;
-begin
-  if _mode not in ('single', 'match3') then raise exception 'Invalid mode' using errcode = 'P0001'; end if;
-  if _ruleset not in ('5rule', '6rule') then raise exception 'Invalid ruleset' using errcode = 'P0001'; end if;
-  _max_rounds := case when _mode = 'match3' then 3 else 1 end;
-
-  _deck := _fresh_deck(_ruleset);
-  _n := array_length(_deck, 1);
-  _p1_hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-  _n := array_length(_deck, 1);
-  _p2_hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-
-  _goals := case when _ruleset = '6rule' then _gen_goals() else '[]'::jsonb end;
-  _ai_token := gen_random_uuid()::text;
-
-  loop
-    _attempts := _attempts + 1;
-    _room_code := gen_room_code();
-    exit when not exists(select 1 from games where room_code = _room_code);
-    if _attempts > 25 then raise exception 'Failed to generate room code'; end if;
-  end loop;
-
-  insert into games(room_code, mode, ruleset, max_rounds, deck,
-                    p1_hand, p2_hand, p1_token, p2_token, is_ai_p2,
-                    discards, expeditions, goals)
-    values (_room_code, _mode, _ruleset, _max_rounds, _deck,
-            _p1_hand, _p2_hand, _p1_token, _ai_token, true,
-            _empty_discards(_ruleset), _empty_expeditions(_ruleset), _goals)
-    returning id into _game_id;
-
-  insert into game_events(game_id, version, room_code) values (_game_id, 0, _room_code);
-
-  return jsonb_build_object('room_code', _room_code, 'role', 'p1', 'ai_token', _ai_token);
-end
-$$;
-
-grant execute on function create_ai_game(text, text, text) to anon, authenticated;
-
--- ============================================================
--- apply_action — also computes scores + cumulative when round ends
--- ============================================================
+drop function if exists apply_action(text, text, jsonb) cascade;
 
 create or replace function apply_action(_room_code text, _token text, _action jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -747,7 +350,6 @@ begin
     _is_wager := card_is_wager(_card_id);
     _card_value := card_value(_card_id);
 
-    -- Validate color is part of current ruleset
     if _g.ruleset = '5rule' and _card_color = 'p' then
       raise exception 'Purple cards only allowed in 6-rule' using errcode = 'P0001';
     end if;
@@ -771,7 +373,6 @@ begin
         (_expeditions->_role->_card_color) || to_jsonb(_card_id));
       _last_discard_color := null;
 
-      -- Re-evaluate goals after the play (6-rule)
       if _g.ruleset = '6rule' then
         _goals := _eval_goals(_goals, _expeditions->_role, _role);
       end if;
@@ -879,10 +480,10 @@ $$;
 grant execute on function apply_action(text, text, jsonb) to anon, authenticated;
 
 -- ============================================================
--- timeout_action — anyone can trigger when 60s has elapsed on the current turn.
--- Picks a valid PLAY for the current player or DISCARDs a random card, then DRAW_FROM_DECK.
--- Designed to be callable by either client so it does not depend on the slow player being online.
+-- 7. Replace timeout_action so it also settles end-game goals on round end.
 -- ============================================================
+
+drop function if exists timeout_action(text, text) cascade;
 
 create or replace function timeout_action(_room_code text, _token text)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -897,7 +498,6 @@ declare
   _card_color text; _is_wager boolean; _card_value int;
   _max_in_exp int; _wager_len int; _has_number boolean;
   _last_discard_color text;
-  _idx int;
   _drew_card int;
   _round_ended boolean := false; _match_ended boolean;
   _p1_break jsonb; _p2_break jsonb;
@@ -915,7 +515,6 @@ begin
   if _g.ended then raise exception 'Round already ended' using errcode = 'P0001'; end if;
   if _g.p2_token is null then raise exception 'Waiting for opponent' using errcode = 'P0001'; end if;
 
-  -- Either player can trigger when timeout elapsed; reject foreign tokens.
   if _g.p1_token <> _token and _g.p2_token <> _token then
     raise exception 'Invalid token' using errcode = 'P0001';
   end if;
@@ -936,9 +535,7 @@ begin
 
   if _g.ruleset = '6rule' then _colors := array['r','g','b','y','w','p']; else _colors := array['r','g','b','y','w']; end if;
 
-  -- Only do play/discard step when the player still owes a play_or_discard.
   if _g.phase = 'play_or_discard' then
-    -- Try to find any legal PLAY for any card in hand.
     foreach _card_id in array _my_hand loop
       _card_color := card_color(_card_id);
       _is_wager := card_is_wager(_card_id);
@@ -970,7 +567,6 @@ begin
       end if;
     end loop;
 
-    -- If no legal PLAY, discard a random card.
     if not _played then
       _card_id := _my_hand[1 + floor(random() * array_length(_my_hand, 1))::int];
       _card_color := card_color(_card_id);
@@ -981,7 +577,6 @@ begin
     end if;
   end if;
 
-  -- DRAW_FROM_DECK (always — completes the turn regardless of starting phase)
   if coalesce(array_length(_deck, 1), 0) > 0 then
     _drew_card := _deck[array_length(_deck, 1)];
     _deck := _deck[1 : array_length(_deck, 1) - 1];
@@ -994,7 +589,6 @@ begin
   _new_history := _g.round_history;
   _match_ended := _g.match_ended;
 
-  -- After turn completes, switch turn and check end of round.
   if coalesce(array_length(_deck, 1), 0) = 0 then
     _round_ended := true;
 
@@ -1053,141 +647,3 @@ end
 $$;
 
 grant execute on function timeout_action(text, text) to anon, authenticated;
-
--- ============================================================
--- next_round — advance to the next round of a match
---   First player = loser of previous round; alternate on tie.
--- ============================================================
-
-create or replace function next_round(_room_code text, _token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  _g games%rowtype;
-  _last jsonb; _p1_total int; _p2_total int;
-  _first text;
-  _deck int[]; _p1_hand int[]; _p2_hand int[]; _n int;
-  _new_version int;
-  _new_goals jsonb;
-begin
-  _room_code := upper(_room_code);
-  select * into _g from games where room_code = _room_code for update;
-  if not found then raise exception 'Room not found' using errcode = 'P0001'; end if;
-  if _g.match_ended then raise exception 'Match already ended — use restart_match' using errcode = 'P0001'; end if;
-  if not _g.ended then raise exception 'Current round is not finished' using errcode = 'P0001'; end if;
-  if _g.p1_token <> _token and _g.p2_token <> _token then
-    raise exception 'Invalid token' using errcode = 'P0001';
-  end if;
-
-  -- Determine next round's first player from the round we just finished.
-  _last := _g.round_history->(jsonb_array_length(_g.round_history) - 1);
-  _p1_total := (_last->'p1'->>'total')::int;
-  _p2_total := (_last->'p2'->>'total')::int;
-  if _p1_total < _p2_total then _first := 'p1';
-  elsif _p2_total < _p1_total then _first := 'p2';
-  else _first := case when _g.first_player = 'p1' then 'p2' else 'p1' end;
-  end if;
-
-  _deck := _fresh_deck(_g.ruleset);
-  _n := array_length(_deck, 1);
-  _p1_hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-  _n := array_length(_deck, 1);
-  _p2_hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-
-  _new_goals := case when _g.ruleset = '6rule' then _gen_goals() else '[]'::jsonb end;
-  _new_version := _g.version + 1;
-
-  update games set
-    current_round = _g.current_round + 1,
-    deck = _deck,
-    p1_hand = _p1_hand,
-    p2_hand = _p2_hand,
-    discards = _empty_discards(_g.ruleset),
-    expeditions = _empty_expeditions(_g.ruleset),
-    goals = _new_goals,
-    turn = _first,
-    first_player = _first,
-    phase = 'play_or_discard',
-    last_discard_color = null,
-    ended = false,
-    turn_started_at = now(),
-    version = _new_version
-  where id = _g.id;
-
-  insert into game_events(game_id, version, room_code) values (_g.id, _new_version, _room_code);
-
-  return jsonb_build_object('ok', true, 'round', _g.current_round + 1, 'first_player', _first);
-end
-$$;
-
-grant execute on function next_round(text, text) to anon, authenticated;
-
--- ============================================================
--- restart_match — reset the whole match in the same room
--- ============================================================
-
-create or replace function restart_match(_room_code text, _token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare
-  _g games%rowtype;
-  _deck int[]; _p1_hand int[]; _p2_hand int[]; _n int;
-  _first text; _new_version int;
-  _new_goals jsonb;
-begin
-  _room_code := upper(_room_code);
-  select * into _g from games where room_code = _room_code for update;
-  if not found then raise exception 'Room not found' using errcode = 'P0001'; end if;
-  if _g.p1_token <> _token and _g.p2_token <> _token then
-    raise exception 'Invalid token' using errcode = 'P0001';
-  end if;
-  if _g.p2_token is null then raise exception 'Opponent has not joined yet' using errcode = 'P0001'; end if;
-
-  if _g.match_ended then
-    if _g.cumulative_p1 < _g.cumulative_p2 then _first := 'p1';
-    elsif _g.cumulative_p2 < _g.cumulative_p1 then _first := 'p2';
-    else _first := case when _g.first_player = 'p1' then 'p2' else 'p1' end;
-    end if;
-  else
-    _first := case when _g.first_player = 'p1' then 'p2' else 'p1' end;
-  end if;
-
-  _deck := _fresh_deck(_g.ruleset);
-  _n := array_length(_deck, 1);
-  _p1_hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-  _n := array_length(_deck, 1);
-  _p2_hand := _deck[(_n - 7):_n];
-  _deck := _deck[1:(_n - 8)];
-
-  _new_goals := case when _g.ruleset = '6rule' then _gen_goals() else '[]'::jsonb end;
-  _new_version := _g.version + 1;
-
-  update games set
-    current_round = 1,
-    deck = _deck,
-    p1_hand = _p1_hand,
-    p2_hand = _p2_hand,
-    discards = _empty_discards(_g.ruleset),
-    expeditions = _empty_expeditions(_g.ruleset),
-    goals = _new_goals,
-    turn = _first,
-    first_player = _first,
-    phase = 'play_or_discard',
-    last_discard_color = null,
-    ended = false,
-    match_ended = false,
-    turn_started_at = now(),
-    cumulative_p1 = 0,
-    cumulative_p2 = 0,
-    round_history = '[]'::jsonb,
-    version = _new_version
-  where id = _g.id;
-
-  insert into game_events(game_id, version, room_code) values (_g.id, _new_version, _room_code);
-
-  return jsonb_build_object('ok', true, 'first_player', _first);
-end
-$$;
-
-grant execute on function restart_match(text, text) to anon, authenticated;

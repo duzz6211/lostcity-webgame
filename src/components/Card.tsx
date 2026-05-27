@@ -1,4 +1,5 @@
 import { cardInfo } from '../lib/types';
+import { HandshakeIcon } from './icons';
 
 interface Props {
   cardId: number;
@@ -6,10 +7,11 @@ interface Props {
   selected?: boolean;
   clickable?: boolean;
   disabled?: boolean;
+  animClass?: string;
   onClick?: () => void;
 }
 
-export default function Card({ cardId, small, selected, clickable, disabled, onClick }: Props) {
+export default function Card({ cardId, small, selected, clickable, disabled, animClass, onClick }: Props) {
   const info = cardInfo(cardId);
   const cls = [
     'card',
@@ -18,15 +20,29 @@ export default function Card({ cardId, small, selected, clickable, disabled, onC
     selected ? 'selected' : '',
     clickable ? 'clickable' : '',
     disabled ? 'disabled' : '',
+    animClass ?? '',
+    info.type === 'wager' ? 'is-wager' : '',
   ].filter(Boolean).join(' ');
 
-  const label = info.type === 'wager' ? '🤝' : String(info.value);
-  const cornerLabel = info.type === 'wager' ? 'W' : String(info.value);
+  const isWager = info.type === 'wager';
+  const cornerLabel = isWager ? '×2' : String(info.value);
 
   return (
     <div className={cls} onClick={disabled ? undefined : onClick}>
-      <div className="top"><span>{cornerLabel}</span><span>{cornerLabel}</span></div>
-      <div className="mid">{info.type === 'wager' ? <span className="wager-badge">{label}</span> : label}</div>
+      <span className="corner tl">{cornerLabel}</span>
+      <span className="corner tr">{cornerLabel}</span>
+      <div className="art" aria-hidden />
+      <div className="mid">
+        {isWager ? (
+          <span className="wager-icon">
+            <HandshakeIcon size={small ? 24 : 32} strokeWidth={1.6} />
+          </span>
+        ) : (
+          <span className="num">{info.value}</span>
+        )}
+      </div>
+      <span className="corner bl">{cornerLabel}</span>
+      <span className="corner br">{cornerLabel}</span>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { nextRound, restartMatch } from '../lib/api';
 import type { GameState, PlayerBreakdown, Role, RoundResult } from '../lib/types';
-import { COLORS, COLOR_LABEL } from '../lib/types';
+import { colorsFor, COLOR_LABEL } from '../lib/types';
 
-interface Props { state: GameState; onLeave: () => void; }
+interface Props { state: GameState; onLeave: () => void; onReload?: () => Promise<void>; }
 
 function valueColor(v: number) {
   if (v > 0) return 'var(--ok)';
@@ -17,7 +17,7 @@ function bannerFor(myTotal: number, oppTotal: number, label: string) {
   return `🤝 ${label} 무승부 (${myTotal})`;
 }
 
-export default function GameOver({ state, onLeave }: Props) {
+export default function GameOver({ state, onLeave, onReload }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,15 +33,28 @@ export default function GameOver({ state, onLeave }: Props) {
   const isMatchOver = state.match_ended || state.mode === 'single';
   const isRoundIntermission = state.ended && !isMatchOver;
 
+  const colors = colorsFor(state.ruleset);
+  const showGoals = state.ruleset === '6rule';
+
   async function handleNext() {
     setBusy(true); setError(null);
-    try { await nextRound(state.room_code); }
-    catch (e: any) { setError(e.message ?? '다음 라운드 실패'); setBusy(false); }
+    try {
+      await nextRound(state.room_code);
+      await onReload?.();
+    } catch (e: any) {
+      setError(e.message ?? '다음 라운드 실패');
+      setBusy(false);
+    }
   }
   async function handleRestart() {
     setBusy(true); setError(null);
-    try { await restartMatch(state.room_code); }
-    catch (e: any) { setError(e.message ?? '재시작 실패'); setBusy(false); }
+    try {
+      await restartMatch(state.room_code);
+      await onReload?.();
+    } catch (e: any) {
+      setError(e.message ?? '재시작 실패');
+      setBusy(false);
+    }
   }
 
   return (
@@ -53,7 +66,7 @@ export default function GameOver({ state, onLeave }: Props) {
             <div className="winner-banner">
               {lastRound && bannerFor(lastRound[meKey].total, lastRound[oppKey].total, '라운드')}
             </div>
-            {lastRound && <BreakdownTable my={lastRound[meKey]} opp={lastRound[oppKey]} />}
+            {lastRound && <BreakdownTable my={lastRound[meKey]} opp={lastRound[oppKey]} colors={colors} showGoals={showGoals} />}
 
             <div style={{ marginTop: 20, padding: 16, background: 'var(--bg)', borderRadius: 8 }}>
               <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
@@ -114,7 +127,7 @@ export default function GameOver({ state, onLeave }: Props) {
                 <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                   마지막 라운드 색깔별
                 </div>
-                <BreakdownTable my={lastRound[meKey]} opp={lastRound[oppKey]} />
+                <BreakdownTable my={lastRound[meKey]} opp={lastRound[oppKey]} colors={colors} showGoals={showGoals} />
               </>
             )}
 
@@ -133,24 +146,33 @@ export default function GameOver({ state, onLeave }: Props) {
   );
 }
 
-function BreakdownTable({ my, opp }: { my: PlayerBreakdown; opp: PlayerBreakdown }) {
+function BreakdownTable({
+  my, opp, colors, showGoals,
+}: { my: PlayerBreakdown; opp: PlayerBreakdown; colors: import('../lib/types').Color[]; showGoals: boolean }) {
   return (
     <table className="score-table">
       <thead>
         <tr>
-          <th className="col-name">색깔</th>
+          <th className="col-name">항목</th>
           <th>나</th>
           <th>상대</th>
         </tr>
       </thead>
       <tbody>
-        {COLORS.map((c) => (
+        {colors.map((c) => (
           <tr key={c}>
             <td className="col-name">{COLOR_LABEL[c]}</td>
-            <td style={{ color: valueColor(my[c]) }}>{my[c]}</td>
-            <td style={{ color: valueColor(opp[c]) }}>{opp[c]}</td>
+            <td style={{ color: valueColor(my[c] ?? 0) }}>{my[c] ?? 0}</td>
+            <td style={{ color: valueColor(opp[c] ?? 0) }}>{opp[c] ?? 0}</td>
           </tr>
         ))}
+        {showGoals && (
+          <tr>
+            <td className="col-name">목표 카드</td>
+            <td style={{ color: valueColor(my.goals ?? 0) }}>+{my.goals ?? 0}</td>
+            <td style={{ color: valueColor(opp.goals ?? 0) }}>+{opp.goals ?? 0}</td>
+          </tr>
+        )}
         <tr className="total">
           <td className="col-name">합계</td>
           <td>{my.total}</td>

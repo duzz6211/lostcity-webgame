@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
-import type { Action, GameState, Mode } from './types';
+import type { Action, GameState, Mode, Ruleset } from './types';
 
-const TOKEN_PREFIX = 'lostcity_token_';
+const TOKEN_PREFIX = 'fk_token_';
 
 function newUuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -30,11 +30,44 @@ export function hasToken(roomCode: string): boolean {
   return localStorage.getItem(TOKEN_PREFIX + roomCode.toUpperCase()) !== null;
 }
 
-export async function createGame(mode: Mode): Promise<{ room_code: string; role: 'p1' }> {
+export async function createGame(mode: Mode, ruleset: Ruleset = '5rule'): Promise<{ room_code: string; role: 'p1' }> {
   const token = newUuid();
-  const { data, error } = await supabase.rpc('create_game', { _p1_token: token, _mode: mode });
+  const { data, error } = await supabase.rpc('create_game', { _p1_token: token, _mode: mode, _ruleset: ruleset });
   if (error) throw new Error(error.message);
   rememberToken(data.room_code, token);
+  return data;
+}
+
+export async function createAiGame(
+  mode: Mode,
+  ruleset: Ruleset = '5rule',
+): Promise<{ room_code: string; role: 'p1'; ai_token: string }> {
+  const token = newUuid();
+  const { data, error } = await supabase.rpc('create_ai_game', { _p1_token: token, _mode: mode, _ruleset: ruleset });
+  if (error) throw new Error(error.message);
+  rememberToken(data.room_code, token);
+  return data;
+}
+
+export async function getStateAs(roomCode: string, token: string): Promise<GameState> {
+  const code = roomCode.toUpperCase();
+  const { data, error } = await supabase.rpc('get_state', { _room_code: code, _token: token });
+  if (error) throw new Error(error.message);
+  return data as GameState;
+}
+
+export async function applyActionAs(roomCode: string, token: string, action: Action) {
+  const code = roomCode.toUpperCase();
+  const { data, error } = await supabase.rpc('apply_action', { _room_code: code, _token: token, _action: action });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function timeoutAction(roomCode: string) {
+  const code = roomCode.toUpperCase();
+  const token = tokenFor(code);
+  const { data, error } = await supabase.rpc('timeout_action', { _room_code: code, _token: token });
+  if (error) throw new Error(error.message);
   return data;
 }
 
