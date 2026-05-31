@@ -1,11 +1,24 @@
 export type Color = 'r' | 'g' | 'b' | 'y' | 'w' | 'p';
-export type Ruleset = '5rule' | '6rule';
+// '5rule'    : 5색 클래식 (목표 카드 없음)
+// '6rule'    : 보라색 추가 6색 (목표 카드 없음)
+// '6special' : 보라색 추가 6색 + 목표 카드 (구 '6rule')
+export type Ruleset = '5rule' | '6rule' | '6special';
 
 export const COLORS_5: Color[] = ['r', 'g', 'b', 'y', 'w'];
 export const COLORS_6: Color[] = ['r', 'g', 'b', 'y', 'w', 'p'];
 
+// 보라색을 포함한 6색 룰(일반/특수) 여부
+export function isSixColor(ruleset: Ruleset): boolean {
+  return ruleset === '6rule' || ruleset === '6special';
+}
+
+// 목표 카드를 사용하는 룰(특수룰)인지 여부
+export function hasGoals(ruleset: Ruleset): boolean {
+  return ruleset === '6special';
+}
+
 export function colorsFor(ruleset: Ruleset): Color[] {
-  return ruleset === '6rule' ? COLORS_6 : COLORS_5;
+  return isSixColor(ruleset) ? COLORS_6 : COLORS_5;
 }
 
 export const COLOR_LABEL: Record<Color, string> = {

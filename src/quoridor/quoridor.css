@@ -1,0 +1,462 @@
+/* ============================================================
+   Quoridor — 게임 전용 스타일 (index.css 의 테마 변수 재사용)
+   ============================================================ */
+
+.q-root {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.q-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.q-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  margin: 0;
+}
+
+.q-leave {
+  font-size: 12px;
+}
+
+.q-layout {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.q-boardwrap {
+  position: relative;
+  flex: 1 1 460px;
+  min-width: 320px;
+  max-width: 600px;
+}
+
+.q-board {
+  display: block;
+  border-radius: 12px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- 컨트롤 패널 ---- */
+.q-panel {
+  flex: 0 0 250px;
+  min-width: 230px;
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.q-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.q-turn-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+}
+.q-turn-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.q-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.q-walls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.q-wallrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.q-wallname {
+  color: var(--muted);
+  flex: 1;
+}
+.q-wallcount {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.q-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.q-seclabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+}
+.q-btnrow {
+  display: flex;
+  gap: 8px;
+}
+.q-btnrow > button {
+  flex: 1;
+}
+
+.q-toggle.on {
+  background: var(--accent-2);
+  border-color: var(--accent);
+  color: #1c1208;
+  font-weight: 700;
+}
+
+.q-hint {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  line-height: 1.5;
+  margin: 2px 0 0;
+}
+
+/* ---- 종료 오버레이 ---- */
+.q-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 12, 6, 0.6);
+  border-radius: 12px;
+  backdrop-filter: blur(2px);
+}
+.q-overlay-card {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 28px 36px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.q-win-emoji {
+  font-size: 44px;
+}
+.q-win-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---- shared accent button ---- */
+.q-primary {
+  background: var(--accent-2);
+  border-color: var(--accent);
+  color: #1c1208;
+  font-weight: 700;
+}
+.q-primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+.q-block {
+  width: 100%;
+}
+
+/* ---- header right ---- */
+.q-headright {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* 방 코드 칩 + 복사 버튼 */
+.q-roomchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.q-roomchip-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+}
+.q-roomchip-code {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+}
+.q-copybtn {
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.q-loading {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.q-error {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(215, 92, 70, 0.14);
+  border: 1px solid var(--danger);
+  color: #f0c4ba;
+  font-size: 13px;
+}
+
+/* ---- board column (board + tray) ---- */
+.q-boardcol {
+  flex: 1 1 460px;
+  min-width: 320px;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.q-boardcol .q-boardwrap {
+  flex: none;
+  max-width: none;
+}
+
+/* ---- role badge / status ---- */
+.q-rolebadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.q-status {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  border: 1px solid var(--border-2);
+}
+.q-status.go {
+  background: var(--action-3);
+  border-color: var(--action-2);
+  color: var(--text);
+}
+.q-status.wait {
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.q-status.end {
+  background: rgba(198, 154, 90, 0.18);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.q-wallrow.active {
+  background: rgba(198, 154, 90, 0.12);
+  border-radius: 6px;
+  padding: 3px 6px;
+  margin: -3px -6px;
+}
+
+.q-howto {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.q-howto b {
+  color: var(--text);
+}
+
+/* ---- wall tray (drag source) ---- */
+.q-tray {
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.q-tray.disabled {
+  opacity: 0.65;
+}
+.q-tray-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.q-tray-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+}
+.q-tray-count {
+  font-weight: 700;
+  color: var(--text);
+}
+.q-wallpiece {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #d8b270, #b98a44);
+  border: 1px solid #6b4a22;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition: transform .1s, box-shadow .1s, opacity .1s;
+}
+.q-wallpiece:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.q-wallpiece.dragging {
+  cursor: grabbing;
+  transform: scale(0.98);
+}
+.q-wallpiece.off {
+  background: var(--panel-2);
+  border-color: var(--border);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.q-wallpiece-bar {
+  width: 64px;
+  height: 12px;
+  border-radius: 3px;
+  background: #5a3c1c;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  flex: none;
+}
+.q-wallpiece.off .q-wallpiece-bar {
+  background: var(--border-2);
+}
+.q-wallpiece-text {
+  font-weight: 700;
+  color: #2a1c0c;
+}
+.q-wallpiece.off .q-wallpiece-text {
+  color: var(--muted-2);
+}
+.q-tray-hint {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  line-height: 1.5;
+  margin: 10px 0 0;
+}
+
+/* ---- floating wall ghost following the cursor ---- */
+.q-floatwall {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  background: rgba(198, 154, 90, 0.85);
+  border: 1px solid #6b4a22;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* ---- lobby ---- */
+.q-lobby {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 28px 18px 48px;
+}
+.q-back {
+  font-size: 12px;
+  margin-bottom: 18px;
+}
+.q-lobby-title {
+  font-size: 26px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.q-lobby-sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 22px;
+  line-height: 1.6;
+}
+.q-lobby-card {
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.q-lobby-h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--text);
+}
+.q-join {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.q-input {
+  flex: 1;
+  background: #1d140c;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.q-join > button {
+  flex: none;
+}
+
+@media (max-width: 720px) {
+  .q-layout {
+    flex-direction: column;
+  }
+  .q-panel {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .q-boardcol {
+    max-width: none;
+  }
+}

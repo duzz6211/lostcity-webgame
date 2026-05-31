@@ -84,9 +84,16 @@ export default function Lobby({ onEnter }: Props) {
               <button
                 className={ruleset === '6rule' ? 'primary' : ''}
                 onClick={() => setRuleset('6rule')}
-                title="보라색 추가 (72장) + 목표 카드"
+                title="보라색 추가 (72장), 목표 카드 없음"
               >
                 6개 룰
+              </button>
+              <button
+                className={ruleset === '6special' ? 'primary' : ''}
+                onClick={() => setRuleset('6special')}
+                title="보라색 추가 (72장) + 목표 카드"
+              >
+                6개 특수룰
               </button>
             </div>
           </div>
@@ -109,10 +116,13 @@ export default function Lobby({ onEnter }: Props) {
             </div>
           </div>
 
-          {(ruleset === '6rule' || opponent === 'ai') && (
+          {(ruleset === '6rule' || ruleset === '6special' || opponent === 'ai') && (
             <div className="lobby-info">
               {ruleset === '6rule' && (
-                <div>보라색 카드 + 매 라운드 목표 카드 3장. 먼저 달성 시 추가 점수.</div>
+                <div>보라색 카드 추가 (총 72장). 목표 카드 없는 6색 클래식.</div>
+              )}
+              {ruleset === '6special' && (
+                <div>보라색 카드 + 매 라운드 목표 카드. 먼저 달성 시 추가 점수.</div>
               )}
               {opponent === 'ai' && (
                 <div className="lobby-info-row">

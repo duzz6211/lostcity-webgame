@@ -34,7 +34,7 @@ export default function GameOver({ state, onLeave, onReload }: Props) {
   const isRoundIntermission = state.ended && !isMatchOver;
 
   const colors = colorsFor(state.ruleset);
-  const showGoals = state.ruleset === '6rule';
+  const showGoals = state.ruleset === '6special';
 
   async function handleNext() {
     setBusy(true); setError(null);

@@ -488,9 +488,12 @@ function Board({ state, selectedCard, setSelectedCard, doAction, busy, error, on
           </div>
         )}
         {state.ruleset === '6rule' && (
-          <div className="round-pill" title="6개 룰: 보라색 + 목표 카드" style={{ color: 'var(--c-p)' }}>6룰</div>
+          <div className="round-pill" title="6개 룰: 보라색 추가" style={{ color: 'var(--c-p)' }}>6룰</div>
         )}
-        {state.ruleset === '6rule' && state.goals && state.goals.length > 0 && (
+        {state.ruleset === '6special' && (
+          <div className="round-pill" title="6개 특수룰: 보라색 + 목표 카드" style={{ color: 'var(--c-p)' }}>특수룰</div>
+        )}
+        {state.ruleset === '6special' && state.goals && state.goals.length > 0 && (
           <button
             ref={goalsButtonRef}
             className={`goals-toggle ${goalsOpen ? 'is-open' : ''}`}
@@ -530,7 +533,7 @@ function Board({ state, selectedCard, setSelectedCard, doAction, busy, error, on
       </div>
 
       {/* Goal cards dropdown (slides down from top bar) */}
-      {state.ruleset === '6rule' && state.goals && state.goals.length > 0 && goalsOpen && (
+      {state.ruleset === '6special' && state.goals && state.goals.length > 0 && goalsOpen && (
         <div ref={goalsDropdownRef} className="goals-dropdown goals-row goals-row-5" role="menu">
           {state.goals.map((g, i) => {
             const claimedByMe = g.claimed_by === meKey;

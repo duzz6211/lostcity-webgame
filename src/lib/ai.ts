@@ -109,8 +109,8 @@ function evaluatePlay(cardId: number, state: GameState, hand: number[], aiRole: 
     if (wagersInExpAfter >= 3) score -= 4;
   }
 
-  // Goal incentive (6-rule).
-  if (state.ruleset === '6rule' && state.goals && state.goals.length > 0) {
+  // Goal incentive (6-special rule only).
+  if (state.ruleset === '6special' && state.goals && state.goals.length > 0) {
     const tempExp = { ...state.expeditions[aiRole], [color]: newExp };
     for (const goal of state.goals) {
       if (goal.claimed_by !== null) continue;
